@@ -5,6 +5,7 @@ using OfficeOpenXml.Style;
 using System.Drawing;
 using VLU.BloodDonation.Api.Data;
 using OfficeOpenXml.FormulaParsing.Excel;
+using VLU.BloodDonation.Api.Data.Entities;
 
 namespace VLU.BloodDonation.Api.Modules.Reports.Controllers;
 
@@ -100,5 +101,45 @@ public class BloodReportController : ControllerBase
         //6. Xuat mang byte va tra ve file excel dinh dang openXML
         var fileBytes = package.GetAsByteArray();
         return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "DanhSachChungNhanHienMau.xlsx");
+    }
+
+    // Định nghĩa cấu trúc dữ liệu người dùng gửi lên khi xác nhận hiến máu
+    public class ConfirmDonationDto
+    {
+        public int UserId { get; set; }
+        public int BloodEventId { get; set; }
+        public int BloodVolumeMl { get; set; } // Lượng máu hiến 
+        public int PointsAwarded { get; set; }  // Điểm cộng 
+    }
+
+    [HttpPost("confirm-donation")]
+    public async Task<IActionResult> ConfirmDonation([FromBody] ConfirmDonationDto dto)
+    {
+        // 1. Tạo ngẫu nhiên một Mã chứng nhận hiến máu (VD: VLU-BL-XXXXXX)
+        var random = new Random();
+        string certifiedCode = $"VLU-BL-{random.Next(100000, 999999)}";
+
+        // 2. Tạo một bản ghi Appointment mới với trạng thái 'Attended'
+        var newAppointment = new Appointment
+        {
+            UserId = dto.UserId,
+            BloodEventId = dto.BloodEventId,
+            AppointmentTime = DateTime.Now,
+            Status = "Attended", 
+            BloodVolumeMl = dto.BloodVolumeMl,
+            CertifiedCode = certifiedCode,
+            PointsAwarded = dto.PointsAwarded,
+            DonationDate = DateTime.Now
+        };
+
+        // 3. Lưu vào Database
+        _context.Appointments.Add(newAppointment);
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            Message = "Ghi nhận sinh viên hiến máu thành công!",
+            CertifiedCode = certifiedCode
+        });
     }
 }
