@@ -105,6 +105,7 @@ public class BloodReportController : ControllerBase
         return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "DanhSachChungNhanHienMau.xlsx");
     }
 
+    
     // Định nghĩa cấu trúc dữ liệu người dùng gửi lên khi xác nhận hiến máu
     public class ConfirmDonationDto
     {
@@ -114,35 +115,104 @@ public class BloodReportController : ControllerBase
         public int PointsAwarded { get; set; }  // Điểm cộng 
     }
 
+    // API SỬA ĐỔI: Ghi nhận hiến máu + Tự động cộng dồn điểm cho sinh viên
     [HttpPost("confirm-donation")]
     [Authorize(Policy = "RequireStaff")]
     public async Task<IActionResult> ConfirmDonation([FromBody] ConfirmDonationDto dto)
     {
-        // 1. Tạo ngẫu nhiên một Mã chứng nhận hiến máu (VD: VLU-BL-XXXXXX)
+        // 1. Kiểm tra sự tồn tại của sinh viên và đợt hiến máu
+        var studentUser = await _context.Users.FindAsync(dto.UserId);
+        if (studentUser == null) return NotFound("Không tìm thấy thông tin sinh viên trên hệ thống.");
+
+        var bloodEvent = await _context.BloodEvents.FindAsync(dto.BloodEventId);
+        if (bloodEvent == null) return NotFound("Không tìm thấy đợt hiến máu này.");
+
+        // 2. Tạo ngẫu nhiên một Mã chứng nhận hiến máu (VD: VLU-BL-XXXXXX)
         var random = new Random();
         string certifiedCode = $"VLU-BL-{random.Next(100000, 999999)}";
 
-        // 2. Tạo một bản ghi Appointment mới với trạng thái 'Attended'
-        var newAppointment = new Appointment
-        {
-            UserId = dto.UserId,
-            BloodEventId = dto.BloodEventId,
-            AppointmentTime = DateTime.Now,
-            Status = "Attended", 
-            BloodVolumeMl = dto.BloodVolumeMl,
-            CertifiedCode = certifiedCode,
-            PointsAwarded = dto.PointsAwarded,
-            DonationDate = DateTime.Now
-        };
+        // 3. Kiểm tra xem sinh viên có lịch hẹn "Pending" nào ở đợt này chưa
+        var existingAppointment = await _context.Appointments
+            .FirstOrDefaultAsync(a => a.UserId == dto.UserId && a.BloodEventId == dto.BloodEventId && a.Status == "Pending");
 
-        // 3. Lưu vào Database
-        _context.Appointments.Add(newAppointment);
+        if (existingAppointment != null)
+        {
+            // Nếu đã đặt lịch trước: Cập nhật trực tiếp trên bản ghi đó
+            existingAppointment.Status = "Attended";
+            existingAppointment.BloodVolumeMl = dto.BloodVolumeMl;
+            existingAppointment.CertifiedCode = certifiedCode;
+            existingAppointment.PointsAwarded = dto.PointsAwarded;
+            existingAppointment.DonationDate = DateTime.Now;
+        }
+        else
+        {
+            // Nếu sinh viên vãng lai chưa đặt lịch trước: Tạo mới bản ghi Attended
+            var newAppointment = new Appointment
+            {
+                UserId = dto.UserId,
+                BloodEventId = dto.BloodEventId,
+                AppointmentTime = DateTime.Now,
+                Status = "Attended",
+                BloodVolumeMl = dto.BloodVolumeMl,
+                CertifiedCode = certifiedCode,
+                PointsAwarded = dto.PointsAwarded,
+                DonationDate = DateTime.Now
+            };
+            _context.Appointments.Add(newAppointment);
+        }
+        studentUser.TotalPoints += dto.PointsAwarded;
+
+        // 5. Lưu tất cả thay đổi xuống Database (Cả bảng Appointments và bảng Users)
         await _context.SaveChangesAsync();
 
         return Ok(new
         {
-            Message = "Ghi nhận sinh viên hiến máu thành công!",
-            CertifiedCode = certifiedCode
+            Message = $"Ghi nhận thành công! Đã cấp mã [{certifiedCode}] và cộng thêm {dto.PointsAwarded} điểm rèn luyện cho sinh viên [{studentUser.FullName}].",
+            CurrentTotalPoints = studentUser.TotalPoints
         });
     }
+
+    // Định nghĩa cấu trúc dữ liệu khi sinh viên đăng ký đặt lịch hẹn trước
+    public class RegisterAppointmentDto
+    {
+        public int BloodEventId { get; set; }
+        public DateTime AppointmentTime { get; set; } // Giờ hẹn đến hiến (VD: 08:30 AM)
+    }
+
+    // Cho phép Sinh viên tự đặt lịch hẹn trước từ giao diện App
+    [HttpPost("register-appointment")]
+    [Authorize]
+    public async Task<IActionResult> RegisterAppointment([FromBody] RegisterAppointmentDto dto)
+    {
+        // 1. Lấy Id của Sinh viên đang đăng nhập từ dữ liệu Claim trong Token JWT
+        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        if (userIdClaim == null) return Unauthorized("Phiên đăng nhập không hợp lệ.");
+        int currentUserId = int.Parse(userIdClaim.Value);
+
+        // 2. Kiểm tra xem đợt hiến máu này có tồn tại hay không
+        var bloodEvent = await _context.BloodEvents.FindAsync(dto.BloodEventId);
+        if (bloodEvent == null) return NotFound("Đợt hiến máu được chọn không tồn tại.");
+
+        // 3. Kiểm tra xem sinh viên này đã đăng ký lịch hẹn cho đợt này chưa (Tránh đăng ký trùng)
+        var isRegistered = await _context.Appointments
+            .AnyAsync(a => a.UserId == currentUserId && a.BloodEventId == dto.BloodEventId);
+        if (isRegistered) return BadRequest("Bạn đã đăng ký lịch hẹn cho đợt hiến máu này rồi.");
+
+        // 4. Khởi tạo lịch hẹn với trạng thái ban đầu là "Pending"
+        var appointment = new Appointment
+        {
+            UserId = currentUserId,
+            BloodEventId = dto.BloodEventId,
+            AppointmentTime = dto.AppointmentTime,
+            Status = "Pending",
+            BloodVolumeMl = 0,   
+            PointsAwarded = 0    
+        };
+
+        _context.Appointments.Add(appointment);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { Message = "Đặt lịch hẹn hiến máu thành công! Vui lòng đến đúng giờ hẹn." });
+    }
+
 }

@@ -9,6 +9,7 @@ public class BloodEvent
     public DateTime EndDate {get; set; }
     public int TargetDonors {get; set; } //Chi tieu hien mau
     public string Status {get; set; } = "Upcoming"; //Upcoming, Active, Completed
+    public string Description { get; set; } = string.Empty;
 
     //Quan he
     public ICollection<Appointment> Appointments {get; set; } = new List<Appointment>();
