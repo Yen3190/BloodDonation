@@ -13,6 +13,8 @@ public class User
     public int TotalPoints {get; set; } //Điểm rèn luyện sẽ nhận được
     public DateTime DateCreated {get; set; } = DateTime.UtcNow;
 
+    public bool IsApproved {get; set;} = false;
+
     //Quan hệ: 1 Sv có thể đăng ký nhiều lịch hẹn
     public ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();
 

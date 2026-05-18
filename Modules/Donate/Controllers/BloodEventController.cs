@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VLU.BloodDonation.Api.Data;
 using VLU.BloodDonation.Api.Data.Entities;
+using Microsoft.AspNetCore.Authorization;
 
 namespace VLU.BloodDonation.Api.Modules.Donate.Controllers;
 
@@ -26,6 +27,7 @@ public class BloodEventController : ControllerBase
 
     // 2. api tạo mới một đợt hiến máu (func của admin)
     [HttpPost]
+    [Authorize(Policy ="RequireAdmin")] //Chi admin co quyen tao dot hien mau
     public async Task<IActionResult> CreateEvent([FromBody] BloodEvent newEvent)
     {
         if (newEvent == null) return BadRequest("Dữ liệu không hợp lệ.");

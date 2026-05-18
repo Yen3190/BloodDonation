@@ -35,7 +35,7 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// 4. Cấu hình chính sách phân quyền (Role + Permission)
+// 4. Cấu hình chính sách phân quyền (Role + quyền hạn)
 builder.Services.AddAuthorization(options =>
 {
     // Yêu cầu người dùng phải mang Role là Admin mới có quyền truy cập

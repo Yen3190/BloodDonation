@@ -6,6 +6,7 @@ using System.Drawing;
 using VLU.BloodDonation.Api.Data;
 using OfficeOpenXml.FormulaParsing.Excel;
 using VLU.BloodDonation.Api.Data.Entities;
+using Microsoft.AspNetCore.Authorization;
 
 namespace VLU.BloodDonation.Api.Modules.Reports.Controllers;
 
@@ -21,6 +22,7 @@ public class BloodReportController : ControllerBase
     }
 
     [HttpGet("export-donors")]
+    [Authorize(Policy = "RequireAdmin")] //Chi admin duoc xuat ds
     public async Task<IActionResult> ExportDonorsToExcel()
     {
         //1. Lay ds sinh vien hien mau thanh cong (Status = Attended)
@@ -113,6 +115,7 @@ public class BloodReportController : ControllerBase
     }
 
     [HttpPost("confirm-donation")]
+    [Authorize(Policy = "RequireStaff")]
     public async Task<IActionResult> ConfirmDonation([FromBody] ConfirmDonationDto dto)
     {
         // 1. Tạo ngẫu nhiên một Mã chứng nhận hiến máu (VD: VLU-BL-XXXXXX)
