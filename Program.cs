@@ -44,6 +44,16 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("RequireStaff", policy => policy.RequireRole("Admin", "Staff", "Doctor"));
 });
 
+// 1. Cấu hình chính sách cho phép Frontend gọi API
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
 
 // 5. Kích hoạt Controller để nhận API
 builder.Services.AddControllers();
@@ -57,5 +67,7 @@ app.UseAuthorization(); //Xác thực role (quyền)
 
 // Định tuyến các API Endpoint
 app.MapControllers();
+
+app.UseCors("AllowFrontend");
 
 app.Run();
